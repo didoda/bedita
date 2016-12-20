@@ -76,7 +76,11 @@ class BEAppModel extends AppModel {
         foreach ($record as $key => $val) {
             if (is_array($val) && !in_array($key, $skipKeys)) {
                 // #639 - Associated models merged to main object results.
-                $tmp = array_merge($tmp, $val);
+                foreach ($val as $k => $v) {
+                    if (empty($tmp[$k]) || !empty($v)) {
+                        $tmp[$k] = $v;
+                    }
+                }
             } else {
                 $tmp[$key] = $val;
             }
@@ -475,6 +479,17 @@ class BEAppModel extends AppModel {
             unset($filter['descendants']);
         }
 
+        if (isset($filter['object_type'])) {
+            if (is_array($filter['object_type'])) {
+                foreach ($filter['object_type'] as $ot) {
+                    $filter['object_type_id'][] = Configure::read('objectTypes.' . $ot . '.id');
+                }
+            } else {
+                $filter['object_type_id'][] = Configure::read('objectTypes.' . $filter['object_type'] . '.id');
+            }
+            unset($filter['object_type']);
+        }
+
         // if filter 'tree_related_object' is set
         // it filters objects that have some relation with objects located
         // on $id tree branch or on $id tree branch descendants (if $all is true)
@@ -589,6 +604,7 @@ class BEAppModel extends AppModel {
 		$sqlItems = $this->getSqlItems($filter);
         $otherFields = $sqlItems['fields'];
         $otherFrom = $sqlItems['from'];
+        $otherJoins = $sqlItems['joins'];
         $otherConditions = $sqlItems['conditions'];
         $otherGroup = $sqlItems['group'];
         $otherOrder = $sqlItems['order'];
@@ -599,7 +615,7 @@ class BEAppModel extends AppModel {
         }
 
 		$conditions = array_merge($conditions, $otherConditions);
-		$from .= $otherFrom;
+		$from .= $otherJoins . $otherFrom;
 
 		if (!empty($id)) {
 			$treeFields = $this->fieldsString("Tree");

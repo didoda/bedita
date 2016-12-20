@@ -3,7 +3,7 @@
  *
  * BEdita - a semantic content management framework
  *
- * Copyright 2014 ChannelWeb Srl, Chialab Srl
+ * Copyright 2014-2015 ChannelWeb Srl, Chialab Srl
  *
  * This file is part of BEdita: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published
@@ -22,11 +22,10 @@
 /**
  * ApiFormatter class
  *
- * Format data to be consumed by client
+ * Format data to be consumed by client or to be saved
  *
  */
 class ApiFormatterComponent extends Object {
-
 
     /**
      * Controller instance
@@ -34,6 +33,13 @@ class ApiFormatterComponent extends Object {
      * @var Controller
      */
     public $controller = null;
+
+    /**
+     * Components used
+     *
+     * @var array
+     */
+    public $components = array('ApiValidator');
 
     /**
      * Fields that must be removed from object/s
@@ -47,12 +53,28 @@ class ApiFormatterComponent extends Object {
         'RelatedObject',
         'bindings',
         'fixed',
+        'valid',
+        'ip_created',
+        'pathSection',
+        // areas
         'stats_code',
         'stats_provider',
         'stats_provider_url',
-        'ip_created',
+        // sections
+        'syndicate',
+        'priority_order',
+        'last_modified',
+        'map_priority',
+        'map_changefreq',
+        // trees fields
+        'area_id',
+        'object_path',
+        'priority',
+        'menu',
         'Category' => array(
+            'id',
             'object_type_id',
+            'area_id',
             'status',
             'priority',
             'parent_id',
@@ -68,6 +90,10 @@ class ApiFormatterComponent extends Object {
             'parent_id',
             'parent_path',
             'url_label'
+        ),
+        'DateItem' => array(
+            'object_id',
+            'params'
         )
     );
 
@@ -87,6 +113,7 @@ class ApiFormatterComponent extends Object {
      * Special types:
      *
      * - `underscoreField` underscorize field. Note that the value of field remains unchanged
+     * - `integerArray` cast to integer all array values
      *
      *
      * The `object` key contains transformation merged with all BEdita objects
@@ -98,9 +125,12 @@ class ApiFormatterComponent extends Object {
         'object' => array(
             'publication_date' => 'datetime',
             'customProperties' => 'underscoreField',
-            'canonicalPath' => 'underscoreField'
+            'canonicalPath' => 'underscoreField',
+            'parentAuthorized' => 'underscoreField'
         )
     );
+
+    protected $urlParams = array();
 
     /**
      * Initialize function
@@ -109,7 +139,7 @@ class ApiFormatterComponent extends Object {
      * @return void
      */
     public function initialize(Controller $controller, array $settings = array()) {
-        $this->controller = $controller;
+        $this->controller = &$controller;
         if (isset($settings['objectFieldsToRemove']) && is_array($settings['objectFieldsToRemove'])) {
             $this->objectFieldsToRemove($settings['objectFieldsToRemove'], true);
         }
@@ -230,6 +260,7 @@ class ApiFormatterComponent extends Object {
      * The keys that correspond to array as `GeoTag` will be underscorized and pluralized.
      * So `GeoTag` become `geo_tags` in the $item array
      *
+     * @see self::transformers comments to all 'type' possibility
      * @param array $transformer the transformer array
      * @param array &$item the item to transform
      * @return void
@@ -267,8 +298,7 @@ class ApiFormatterComponent extends Object {
                             case 'date':
                             case 'datetime':
                                 if (!empty($item[$field])) {
-                                    $datetime = new DateTime($item[$field]);
-                                    $item[$field] = $datetime->format(DateTime::ISO8601);
+                                    $item[$field] = $this->dateFromDb($item[$field]);
                                 }
                                 break;
 
@@ -277,11 +307,44 @@ class ApiFormatterComponent extends Object {
                                 $item[$newField] = $item[$field];
                                 unset($item[$field]);
                                 break;
+
+                            case 'integerArray':
+                                if (is_array($item[$field])) {
+                                    $item[$field] = array_map('intval', $item[$field]);
+                                }
+                                break;
                         }
                     }
                 }
             }
         }
+    }
+
+    /**
+     * Convert a date from db to ISO-8601 format
+     * Use DateTime::ATOM format i.e. 2005-08-15T15:52:01+00:00
+     *
+     * @param string $date the date string to convert
+     * @return string
+     */
+    public function dateFromDb($date) {
+        $dateTime = new DateTime($date);
+        return $dateTime->format(DateTime::ATOM);
+    }
+
+    /**
+     * Convert a date from ISO-8601 to $dbFormat
+     * The format supported are:
+     * - 2005-08-15T15:52:01+02:00
+     * - 2005-08-15T13:52:01.467Z (js Date().toISOString())
+     *
+     * @param string $date the ISO-8601 date string
+     * @param string $dbFormat the db format (default 'datetime' db type)
+     * @return string
+     */
+    public function dateToDb($date, $dbFormat = 'Y-m-d H:i:s') {
+        $dateTime = $this->ApiValidator->checkDate($date);
+        return $dateTime->format($dbFormat);
     }
 
     /**
@@ -298,16 +361,16 @@ class ApiFormatterComponent extends Object {
     }
 
     /**
-     * Transform a BEdita object type casting fields to the right type
-     * Use BEAppObjectModel::apiTransformer() to get the transformer and merge it with self::transformers['object']
+     * Return the BEdita object transformer
+     * Used to know the fields to cast and the type
      *
-     * The transformer is cached
-     *
-     * @param array &$object
-     * @return void
+     * @param array $object the BEdita object
+     * @return array
      */
-    public function transformObject(array &$object) {
-        $Object = ClassRegistry::init($object['object_type']);
+    public function getObjectTransformer(array $object) {
+        $objectType = !empty($object['object_type']) ? $object['object_type'] : $object['object_type_id'];
+        $modelName = Configure::read('objectTypes.' . $objectType . '.model');
+        $Object = ClassRegistry::init($modelName);
         $modelName = $Object->name;
         $transformer = array();
         if (!isset($this->transformers[$modelName])) {
@@ -328,69 +391,216 @@ class ApiFormatterComponent extends Object {
         } else {
             $transformer = $this->transformers[$modelName];
         }
+        return $transformer;
+    }
+
+    /**
+     * Transform a BEdita object type casting fields to the right type
+     * Use BEAppObjectModel::apiTransformer() to get the transformer and merge it with self::transformers['object']
+     *
+     * The transformer is cached
+     *
+     * @param array &$object
+     * @return void
+     */
+    public function transformObject(array &$object) {
+        $transformer = $this->getObjectTransformer($object);
         $this->transformItem($transformer, $object);
+    }
+
+    /**
+     * Count $object relations and return a formatted array as
+     *
+     * ```
+     * array(
+     *     'attach' => array(
+     *         'count' => 8,
+     *         'url' => 'https://example.com/api/v1/objects/1/relations/attach'
+     *     ),
+     *     'seealso' => array(
+     *         'count' => 2,
+     *         'url' => 'https://example.com/api/v1/objects/1/relations/seealso'
+     *     )
+     * )
+     * ```
+     *
+     * @param array $object the object on which to count the relations
+     * @return array
+     */
+    public function formatRelationsCount(array $object) {
+        $relations = array();
+        $objectRelation = ClassRegistry::init('ObjectRelation');
+        // count all relations
+        $countRel = $objectRelation->find('all', array(
+            'fields' => array('COUNT(ObjectRelation.id) as count', 'ObjectRelation.switch'),
+            'conditions' => array('ObjectRelation.id' => $object['id']),
+            'group' => 'ObjectRelation.switch',
+            'joins' => array(
+                array(
+                    'table' => 'objects',
+                    'alias' => 'BEObject',
+                    'type' => 'inner',
+                    'conditions' => array(
+                        'ObjectRelation.object_id = BEObject.id',
+                        'BEObject.status' => $this->controller->getStatus()
+                    )
+                )
+            )
+        ));
+
+        // count not accessible relations
+        $permission = ClassRegistry::init('Permission');
+        $user = $this->controller->ApiAuth->getUser();
+        $countForbidden = $permission->relatedObjectsNotAccessibile(
+            $object['id'],
+            array(
+                'count' => true,
+                'status' => $this->controller->getStatus()
+            ),
+            $user
+        );
+
+        $url = $this->controller->baseUrl() . '/objects/' . $object['id']  . '/relations/';
+        if (!empty($countRel)) {
+            foreach ($countRel as $cDetail) {
+                $count = $cDetail[0]['count'];
+                $switch = $cDetail['ObjectRelation']['switch'];
+                if (isset($countForbidden[$switch])) {
+                    $count -= $countForbidden[$switch];
+                }
+                $relations[$switch] = array(
+                    'count' => (int) $count,
+                    'url' => $url . $switch
+                );
+            }
+        }
+        return $relations;
+    }
+
+    /**
+     * Count $object children and return a formatted array as
+     *
+     * ```
+     * array(
+     *     'count' => 14, // total children
+     *     'url' => 'https://example.com/api/v1/objects/1/children',
+     *     'contents' => array(
+     *         'count' => 12, // contents children
+     *         'url' => 'https://example.com/api/v1/objects/1/contents'
+     *     ),
+     *     'sections' => array(
+     *         'count' => 2, // sections children
+     *         'url' => 'https://example.com/api/v1/objects/1/sections'
+     *     )
+     * )
+     * ```
+     *
+     * @param array $object the object on which to count children
+     * @return array
+     */
+    public function formatChildrenCount(array $object) {
+        $tree = ClassRegistry::init('Tree');
+        $options = array(
+            'conditions' => array('BEObject.status' => $this->controller->getStatus()),
+            'joins' => array()
+        );
+        $countContents = $tree->countChildrenContents($object['id'], $options);
+        $countSections = $tree->countChildrenSections($object['id'], $options);
+
+        $permissionJoin = array(
+            'table' => 'permissions',
+            'alias' => 'Permission',
+            'type' => 'inner',
+            'conditions' => array(
+                'Permission.object_id = Tree.id',
+                'Permission.flag' => Configure::read('objectPermissions.frontend_access_with_block'),
+                'Permission.switch' => 'group',
+            )
+        );
+        $options['joins'][] = $permissionJoin;
+        $countContentsForbidden = $tree->countChildrenContents($object['id'], $options);
+        $countSectionsForbidden = $tree->countChildrenSections($object['id'], $options);
+
+        $user = $this->controller->ApiAuth->getUser();
+        if (!empty($user)) {
+            $permissionJoin['conditions']['NOT'] = array('Permission.ugid' => $user['groupsIds']);
+            $countContentsForbidden -= $tree->countChildrenContents($object['id'], $options);
+            $countSectionsForbidden -= $tree->countChildrenSections($object['id'], $options);
+        }
+
+        $countContents -= $countContentsForbidden;
+        $countSections -= $countSectionsForbidden;
+        $countChildren = $countContents + $countSections;
+        $url = $this->controller->baseUrl() . '/objects/' . $object['id'] . '/';
+
+        if ($countChildren == 0) {
+            return array();
+        }
+
+        $result = array(
+            'count' => (int) $countChildren,
+            'url' => $url . 'children'
+        );
+        if ($countContents > 0) {
+            $result['contents'] = array(
+                'count' => (int) $countContents,
+                'url' => $url . 'contents'
+            );
+        }
+        if ($countSections > 0) {
+            $result['sections'] = array(
+                'count' => (int) $countSections,
+                'url' => $url . 'sections'
+            );
+        }
+        return $result;
     }
 
     /**
      * Given an object return the formatted data ready for api response
      *
-     * The $result must be located in 'data' key of api response.
-     * It's in the form
+     * The $result is normally located in 'data' key of api response
+     * and it's in the form
      *
      * ```
-     * 'object' => array(...), // object data
-     * 'related' => array(...) // related object data
+     * 'object' => array(...) // object data
      * ```
+     *
+     * $options is used to personalize the object formatted.
+     * Possible values are:
+     *
+     * - 'countRelations' (default false) to add a count of relations with url to reach them
+     * - 'countChildren' (default false) to add a count of children with url to reach them
      *
      * @param array $object representation of a BEdita object
      * @param array $options
      * @return array
      */
     public function formatObject(array $object, $options = array()) {
+        $options += array('countRelations' => false, 'countChildren' => false);
+        $object['object_type'] = Configure::read('objectTypes.' . $object['object_type_id'] . '.name');
+        // adjust 'uri' in multimedia objects
+        $multimediaObjectTypeIds = Configure::read('objectTypes.multimedia.id');
+        if (in_array($object['object_type_id'], $multimediaObjectTypeIds)) {
+            if (!empty($object['uri']) && filter_var($object['uri'], FILTER_VALIDATE_URL) === false) {
+                $object['uri'] = Configure::read('mediaUrl') . $object['uri'];
+            }
+        }
         $this->cleanObject($object);
         $this->transformObject($object);
-        $result = array('object' => $object, 'related' => array());
-        if (!empty($object['relations'])) {
-            foreach ($object['relations'] as $relation => $relatedObjects) {
-                $result['object']['relations'][$relation] = array();
-                foreach ($relatedObjects as $relObj) {
-                    $result['object']['relations'][$relation][] = array(
-                        'id_right' => (int) $relObj['id'],
-                        'params' => $relObj['params'],
-                        'priority' => (int) $relObj['priority']
-                    );
-                    $relObjFormatted = $this->formatObject($relObj, $options);
-                    $result['related'][$relObj['id']] = $relObjFormatted['object'];
-                    if (!empty($relObjFormatted['related'])) {
-                        $result['related'] += $relObjFormatted['related'];
-                    }
-                }
-            }
+        if ($options['countRelations']) {
+            $object['relations'] = $this->formatRelationsCount($object);
         }
-
-        // format children
-        if (!empty($object['children'])) {
-            $result['object']['children'] = array(
-                'contents' => array(),
-                'sections' => array()
+        if ($options['countChildren']) {
+            $branches = array(
+                Configure::read('objectTypes.area.id'),
+                Configure::read('objectTypes.section.id')
             );
-
-            foreach (array('contents', 'sections') as $type) {
-                $typeKey = 'child' . ucfirst($type);
-                if (!empty($object['children'][$typeKey])) {
-                    foreach ($object['children'][$typeKey] as $child) {
-                        $result['object']['children'][$type][] = (int) $child['id'];
-                        $typeFormatted = $this->formatObject($child, $options);
-                        $result['related'][$child['id']] = $typeFormatted['object'];
-                        if (!empty($typeFormatted['related'])) {
-                            $result['related'] += $typeFormatted['related'];
-                        }
-                    }
-                    unset($object['children'][$typeKey]);
-                }
+            if (in_array($object['object_type_id'], $branches)) {
+                $object['children'] = $this->formatChildrenCount($object);
             }
         }
-        return $result;
+        return array('object' => $object);
     }
 
     /**
@@ -399,8 +609,9 @@ class ApiFormatterComponent extends Object {
      *
      * ```
      * 'objects' => array(...), // object data
-     * 'related' => array(...) // related object data
      * ```
+     *
+     * $options is used to personalize the object formatted.
      *
      * @see self::formatObject()
      * @param array $objects array of BEdita objects
@@ -408,11 +619,10 @@ class ApiFormatterComponent extends Object {
      * @return array
      */
     public function formatObjects(array $objects, $options = array()) {
-        $result = array('objects' => array(), 'related' => array());
+        $result = array('objects' => array());
         foreach ($objects as $obj) {
             $objectFormatted = $this->formatObject($obj, $options);
             $result['objects'][] = $objectFormatted['object'];
-            $result['related'] += $objectFormatted['related'];
         }
         return $result;
     }
@@ -464,10 +674,196 @@ class ApiFormatterComponent extends Object {
                 } elseif (isset($object[$key])) {
                     $object[$key] = array_diff_key($object[$key], $fieldsToRemove);
                 }
-            } elseif (isset($object[$value])) {
+            } elseif (array_key_exists($value, $object)) {
                 unset($object[$value]);
             }
         }
+    }
+
+    /**
+     * Arrange $object data to save
+     *
+     * - clean fields
+     * - transform date ISO8601 in SQL format
+     *
+     * @param array $object the $object data to save
+     * @return array
+     */
+    public function formatObjectForSave(array $object) {
+        if (!empty($object['relations'])) {
+            $object['RelatedObject'] = $this->formatRelationsForSave($object['relations']);
+            unset($object['relations']);
+        }
+        if (!empty($object['categories'])) {
+            $object['Category'] = $this->formatCategoriesForSave($object['categories'], $object['object_type_id']);
+            unset($object['categories']);
+        }
+        if (!empty($object['tags'])) {
+            $tags = $this->formatTagsForSave($object['tags']);
+            $object['Category'] = (!empty($object['Category'])) ? array_merge($object['Category'], $tags) : $tags;
+            unset($object['tags']);
+        }
+        if (!empty($object['geo_tags'])) {
+            $object['GeoTag'] = $object['geo_tags'];
+            unset($object['geo_tags']);
+        }
+        if (!empty($object['date_items'])) {
+            $object['DateItem'] = $this->formatDateItemsForSave($object['date_items']);
+            unset($object['date_items']);
+        }
+
+        $transformer = $this->getObjectTransformer($object);
+        foreach ($object as $key => $value) {
+            if (array_key_exists($key, $transformer)) {
+                if ($transformer[$key] == 'date') {
+                    $object[$key] = $this->dateToDb($value, 'Y-m-d');
+                } elseif ($transformer[$key] == 'datetime') {
+                    $object[$key] = $this->dateToDb($value, 'Y-m-d H:i:s');
+                }
+            }
+        }
+        return $object;
+    }
+
+    /**
+     * Arrange relations data to save.
+     * The data returned are suitable to saving an object
+     *
+     * The $relations array has to be in the form
+     * ```
+     * array(
+     *     'attach' => array(
+     *         array(
+     *             'related_id' => 1,
+     *             ...
+     *         ),
+     *         array(...)
+     *     ),
+     *     'seealso' => array(...)
+     * )
+     * ```
+     *
+     * @param array $relations array of relations
+     * @return array
+     */
+    public function formatRelationsForSave(array $relations) {
+        $relationsFormatted = array();
+        foreach ($relations as $name => $relList) {
+            $r = array(
+                0 => array('switch' => $name)
+            );
+            foreach ($relList as $key => $relData) {
+                $r[$relData['related_id']]['id'] = $relData['related_id'];
+                $r[$relData['related_id']]['priority'] = empty($relData['priority']) ? $key + 1 : $relData['priority'];
+                if (!empty($relData['params'])) {
+                    $r[$relData['related_id']]['params'] = $relData['params'];
+                }
+            }
+            $relationsFormatted[$name] = $r;
+        }
+        return $relationsFormatted;
+    }
+
+    /**
+     * Arrange categories data for save.
+     * The data returned are suitable to saving an object.
+     * Return an array of ids
+     *
+     * @param array $categories an array of category names
+     * @param int $objectTypeId the object type id
+     * @return array
+     */
+    public function formatCategoriesForSave(array $categories, $objectTypeId = null) {
+        $categoryModel = ClassRegistry::init('Category');
+        $categoryModel->Behaviors->disable('CompactResult');
+        $result = $categoryModel->find('list', array(
+            'fields' => array('name', 'id'),
+            'conditions' => array(
+                'name' => $categories,
+                'object_type_id' => $objectTypeId,
+                'status' => $this->controller->getStatus()
+            )
+        ));
+        $categoryModel->Behaviors->enable('CompactResult');
+        return array_values($result);
+    }
+
+    /**
+     * Arrange tags data for save.
+     * The data returned are suitable to saving an object.
+     * Return an array of ids
+     *
+     * @param array $tags an array of tag names
+     * @return array
+     */
+    public function formatTagsForSave(array $tags) {
+        return $this->formatCategoriesForSave($tags);
+    }
+
+    /**
+     * Arrange date items for save:
+     * - format 'start_date' and 'end_date'
+     *
+     */
+    public function formatDateItemsForSave(array $dateItems) {
+        foreach ($dateItems as &$item) {
+            foreach ($item as $field => &$value) {
+                if (($field == 'start_date' || $field == 'end_date') && !empty($value)) {
+                    $value = $this->dateToDb($value, 'Y-m-d H:i:s');
+                } elseif ($field == 'days') {
+                    sort($value);
+                }
+            }
+        }
+        return $dateItems;
+    }
+
+    /**
+     * Format $this->controller->params['url'] building array of values starting from $separator separated values.
+     * By default $separator is ',' char and 'query' is excluded because it represents a full text search
+     *
+     * For example in a request as:
+     *
+     * https://example.com/objects?object_type=document,event&page=2
+     *
+     * the url params are formatted as
+     *
+     * ```
+     * array(
+     *     'object_type' => array('document', 'event'),
+     *     'page' => 2
+     * )
+     * ```
+     *
+     * Once url params has been formatted that value is returned to every next call without parse again the url
+     * unless $reset params is true
+     *
+     * @param string $separator the separator char that explode string in array
+     * @param array $exclude the array of url params to exclude to the formatting
+     * @param boolean $reset true if the url params have to be formatted again also if it had already been done
+     * @return array
+     */
+    public function formatUrlParams($separator = ',', array $exclude = array('query'), $reset = false) {
+        if (empty($this->urlParams) || $reset) {
+            $this->urlParams = $this->controller->params['url'];
+            array_shift($this->urlParams);
+            if (!empty($this->urlParams)) {
+                foreach ($this->urlParams as $name => &$value) {
+                    if (is_array($value)) {
+                        foreach ($value as $k => &$v) {
+                            if (!in_array($k, $exclude)) {
+                                $v = explode($separator, trim($v, $separator));
+                            }
+                        }
+                    } else {
+                        if (!in_array($name, $exclude)) {
+                            $value = explode($separator, trim($value, $separator));
+                        }
+                    }
+                }
+            }
+        }
+        return $this->urlParams;
     }
 
 }

@@ -92,6 +92,7 @@ class Section extends BeditaCollectionModel
 		)
 	) ;
 
+    public $objectTypesGroups = array('related');
 
 	function afterSave($created) {
 		if (!$created) {
@@ -179,5 +180,24 @@ class Section extends BeditaCollectionModel
 			}
 		}
 	}
+
+    /**
+     * Return an array of column types to transform (cast) for generic BEdita object type
+     * Used to build consistent REST APIs
+     *
+     * In general it returns all castable fields from BEAppObjectModel::apiTransformer() and add transformer results from Tree
+     *
+     * Possible options are:
+     * - 'castable' an array of fields that the REST APIs should cast to
+     *
+     * @see BEAppObjectModel::apiTransformer()
+     * @param array $options
+     * @return array
+     */
+    public function apiTransformer(array $options = array()) {
+        $transformer = parent::apiTransformer($options);
+        $transformer += $this->Tree->apiTransformer($options);
+        return $transformer;
+    }
 
 }

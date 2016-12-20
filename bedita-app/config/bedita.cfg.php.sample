@@ -178,6 +178,13 @@ $config['mediaUrl'] = $config['beditaUrl'] . '/files';
 //$config['addShortText'] = true;
 
 /**
+ * Event calendar range used in the calendar view in module Events
+ * (default '+1 month'), strtotime compatible
+ */
+// $config['eventCalendarRange'] = '+1 month';
+
+
+/**
  ** ******************************************
  **  Login (backend) and Security Policies
  ** ******************************************
@@ -303,3 +310,12 @@ $config['mediaUrl'] = $config['beditaUrl'] . '/files';
 //     'password' => ''
 //   )
 // );
+
+/**
+ * Set whether JS date picker should be used or not.
+ *
+ * Disable it to prevent it from interfering with b.C. dates.
+ *
+ * @var bool
+ */
+// $config['useDatePicker'] = false;

@@ -27,10 +27,10 @@
 
 $config = array() ;
 
-$config['projectName'] = 'BEdita 3.5'; // override in bedita.cfg
+$config['projectName'] = 'BEdita 3.6'; // override in bedita.cfg
 
 // BEdita version - Semantic Versioning http://semver.org
-$config['version'] = '3.5.2'; // don't override -- admin/system
+$config['version'] = '3.6.0'; // don't override -- admin/system
 
 // majorVersion deprecated, keep for retrocomp
 $config['majorVersion'] = $config['version']; // don't override
@@ -41,6 +41,15 @@ $config['codenameVersion'] = 'Corylus'; // don't override -- admin/system
 $config['imgMissingFile'] = '/img/iconMissingImage_130x85.gif';
 
 $config['imgUnsupported'] = '/img/iconset/image-large.png';
+
+/**
+ * File size limit (in bytes). If an image exceeds this limit, thumbnail won't be generated,
+ * and the script won't even try to open the file, avoiding memory issues.
+ * If set to `null`, no file size limit will be enforced.
+ *
+ * @var int|null
+ */
+$config['imgFilesizeLimit'] = 1024 * 1024 * 16;
 
 /**
  ** ******************************************
@@ -129,6 +138,13 @@ $config['dateTimePattern'] 	= "%m-%d-%Y  %H:%M";  //
 $config['dateTimePatternLocale'] = array(
 	"ita"	=> "%d/%m/%Y %H:%M"
 );
+
+/**
+ * Event calendar range used in the calendar view in module Events
+ * (default '+1 month'), strtotime compatible
+ */
+$config['eventCalendarRange'] = '+1 month';
+
 
 /**
  ** ******************************************
@@ -682,6 +698,15 @@ $config["geoTagOptions"] = array(
 		"e" => "Google Earth™",
 	)
 );
+
+/**
+ * Set whether JS date picker should be used or not.
+ *
+ * Disable it to prevent it from interfering with b.C. dates.
+ *
+ * @var bool
+ */
+$config['useDatePicker'] = true;
 
 /**
  ** ******************************************

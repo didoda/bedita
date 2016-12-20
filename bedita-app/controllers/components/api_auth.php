@@ -23,12 +23,20 @@ App::import('Vendor', 'BeforeValidException', array('file' => 'php-jwt' . DS . '
 App::import('Vendor', 'ExpiredException', array('file' => 'php-jwt' . DS . 'Exceptions' . DS . 'ExpiredException.php'));
 App::import('Vendor', 'SignatureInvalidException', array('file' => 'php-jwt' . DS . 'Exceptions' . DS . 'SignatureInvalidException.php'));
 App::import('Vendor', 'JWT', array('file' => 'php-jwt' . DS . 'Authentication' . DS . 'JWT.php'));
-
+App::import(
+    'File',
+    'ApiAuthInterface',
+    array('file' => BEDITA_CORE_PATH . DS . 'controllers' . DS . 'components' . DS  . 'api_auth_interface.php')
+);
 
 /**
- * JSON Web Token (JWT) auth component
-*/
-class BeAuthJwtComponent extends Object {
+ * REST API auth component
+ * 'access_token' used for authentication is a JSON Web Token (JWT)
+ *
+ * @see http://jwt.io
+ * @see https://tools.ietf.org/html/rfc7519 (for full specs)
+ */
+class ApiAuthComponent extends Object implements ApiAuthInterface {
 
     /**
      * The Controller
@@ -43,21 +51,21 @@ class BeAuthJwtComponent extends Object {
      *
      * @var array|bool
      */
-    private $user = false;
+    protected $user = false;
 
     /**
      * The JWT generated or read from request
      *
      * @var string
      */
-    private $token = null;
+    protected $token = null;
 
     /**
      * The payload used token generation
      *
      * @var array
      */
-    private $payload = array();
+    protected $payload = array();
 
     /**
      * Configuration used to customize token generation
@@ -80,7 +88,7 @@ class BeAuthJwtComponent extends Object {
         Configure::write('Session.start', false);
         $this->controller = $controller;
         $this->token = null;
-        $jwtConf = Configure::read('api.JWT');
+        $jwtConf = Configure::read('api.auth.JWT');
         if ($jwtConf) {
             $this->config = $jwtConf + $this->config;
         }
@@ -98,16 +106,6 @@ class BeAuthJwtComponent extends Object {
         if (empty($this->config['iss'])) {
             $this->config['iss'] = $controller->viewVars['publication']['public_url'];
         }
-    }
-
-    /**
-     * Return true if user is authenticated through JWT
-     * Used from FrontendController, it replaces BeAuthComponent::isLogged() in api context
-     *
-     * @return bool
-     */
-    public function isLogged() {
-        return $this->identify();
     }
 
     /**
@@ -130,18 +128,17 @@ class BeAuthJwtComponent extends Object {
     }
 
     /**
-     * Login user, it replaces BeAuthComponent::login() in api context
+     * Authenticate user starting from username and password
      *
-     * @param string $userid the username
+     * @param string $username the username
      * @param string $password the user password
-     * @param array $policy unused in api context
      * @param array $authGroupName an array of groups authorized to login
      * @return bool
      */
-    public function login($userid, $password, $policy = null, array $authGroupName = array()) {
+    public function authenticate($username, $password, array $authGroupName = array()) {
         $userModel = ClassRegistry::init('User');
         $conditions = array(
-            'User.userid' => $userid,
+            'User.userid' => $username,
             'User.passwd' => md5($password),
             'User.valid' => 1
         );
@@ -162,11 +159,11 @@ class BeAuthJwtComponent extends Object {
         }
 
         if ($authorized === false) {
-            $this->log('User login not authorized: ' . $userid);
+            $this->log('User login not authorized: ' . $username);
             return false;
         }
 
-        $userModel->compact($u);
+        $userModel->compact($u, true);
 
         $this->user = $u;
         return true;
@@ -221,7 +218,7 @@ class BeAuthJwtComponent extends Object {
      */
     public function generateRefreshToken() {
         if (!$this->identify()) {
-            throw new BeditaUnauthorizedException();
+            return false;
         }
 
         $refreshToken = Security::generateAuthKey();
@@ -247,7 +244,7 @@ class BeAuthJwtComponent extends Object {
      */
     public function revokeRefreshToken($refreshToken) {
         if (!$this->identify()) {
-            throw new BeditaUnauthorizedException();
+            return false;
         }
 
         $hashJob = ClassRegistry::init('HashJob');
@@ -284,18 +281,16 @@ class BeAuthJwtComponent extends Object {
             return $this->token;
         }
 
-        $token = env('HTTP_AUTHORIZATION');
+        $token = env('HTTP_AUTHORIZATION') ? env('HTTP_AUTHORIZATION') : env('REDIRECT_HTTP_AUTHORIZATION');
 
         if (!$token && function_exists('getallheaders')) {
             $headers = getallheaders();
-            if (isset($headers['Authorization']) &&
-                substr($headers['Authorization'], 0, 7) === 'Bearer '
-            ) {
+            if (isset($headers['Authorization'])) {
                 $token = $headers['Authorization'];
             }
         }
 
-        if ($token) {
+        if ($token && substr($token, 0, 7) === 'Bearer ') {
             $this->token = substr($token, 7);
         } elseif (!empty($this->params['url']['access_token'])) {
             $this->token = $this->params['url']['access_token'];
@@ -376,13 +371,13 @@ class BeAuthJwtComponent extends Object {
             return false;
         }
 
-        $userModel->compact($user);
+        $userModel->compact($user, true);
         return $user;
     }
 
     /**
      * Return the userid
-     * It replaces BeAuthComponent::userid() in api context
+     * It replaces BeAuthComponent::userid() in API context
      *
      * @return string
      */
@@ -392,7 +387,7 @@ class BeAuthJwtComponent extends Object {
 
     /**
      * Return the user data
-     * it replaces BeAuthComponent::getUserSession() in api context
+     * it replaces BeAuthComponent::getUserSession() in API context
      *
      * @return array
      */
@@ -402,7 +397,9 @@ class BeAuthJwtComponent extends Object {
 
     /**
      * Get the current identified user
-     * It replaces BeAuthComponent::getUser() in api context
+     * It replaces BeAuthComponent::getUser() in API context
+     *
+     * @return array
      */
     public function getUser() {
         return $this->getUserSession();

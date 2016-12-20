@@ -153,7 +153,16 @@ class BeSystem {
 				$results[$key] = array_merge($results[$key], $resSmarty[$key]);
 			}
 		}
-		Cache::clear();
+		
+        if ($cleanAll) {
+            $cacheKeys = Cache::configured();
+            foreach ($cacheKeys as $ck) {
+                Cache::clear(false, $ck);
+            }
+        } else {
+            Cache::clear();
+        }
+
 		if ($frontendsToo) {
 			$folder= new Folder(BEDITA_FRONTENDS_PATH);
             $dirs = $folder->read(true, true, true);
@@ -200,9 +209,11 @@ class BeSystem {
 			throw new BeditaException(__("Directory", true) . " " . $basePath . __("not found", true));
 		}
 		$results = array('success' => array(), 'failed' => array());
+	    App::import('Core', 'Folder');
 		$folder = new Folder($basePath);
 		$list = $folder->read(true, true, true);
 		// delete files
+		App::import('Core', 'File');
 		foreach ($list[1] as $file) {
 			$f = new File($file);
 			if ($f->name != "empty") {
