@@ -17,6 +17,7 @@ use BEdita\API\Controller\Component\JsonApiComponent;
 use Cake\Controller\ComponentRegistry;
 use Cake\Controller\Controller;
 use Cake\Event\Event;
+use Cake\Network\Exception\HttpException;
 use Cake\Network\Request;
 use Cake\ORM\TableRegistry;
 use Cake\Routing\Router;
@@ -272,15 +273,19 @@ class JsonApiComponentTest extends TestCase
                     'type' => 'customType',
                     'key' => 'value',
                 ],
-                '{"data":{"type":"customType","attributes":{"key":"value"}}}'
+                '{"data":{"type":"customType","attributes":{"key":"value"}}}',
             ],
             'invalidJson' => [
-                [],
+                new HttpException('Invalid JSON', 400),
                 '{"some", "invalid":"json"',
             ],
             'invalidJsonApi' => [
-                false,
+                new HttpException('Key `type` is mandatory', 400),
                 '{"data":{"type":null,"attributes":{"key":"value"}}}',
+            ],
+            'empty' => [
+                [],
+                '',
             ],
         ];
     }
@@ -288,7 +293,7 @@ class JsonApiComponentTest extends TestCase
     /**
      * Test `parseInput()` method.
      *
-     * @param array $expected Expected parsed array.
+     * @param array|\Exception $expected Expected parsed array.
      * @param string $input Input to be parsed.
      * @return void
      *
@@ -297,15 +302,17 @@ class JsonApiComponentTest extends TestCase
      */
     public function testParseInput($expected, $input)
     {
-        if ($expected === false) {
-            $this->expectException('\InvalidArgumentException');
+        if ($expected instanceof \Exception) {
+            static::expectException(get_class($expected));
+            static::expectExceptionMessage($expected->getMessage());
+            static::expectExceptionCode($expected->getCode());
         }
 
         $component = new JsonApiComponent(new ComponentRegistry(new Controller()));
 
         $result = $component->parseInput($input);
 
-        $this->assertEquals($expected, $result);
+        static::assertEquals($expected, $result);
     }
 
     /**

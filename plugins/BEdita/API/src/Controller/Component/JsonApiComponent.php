@@ -16,10 +16,10 @@ use BEdita\API\Network\Exception\UnsupportedMediaTypeException;
 use BEdita\API\Utility\JsonApi;
 use Cake\Controller\Component;
 use Cake\Controller\Controller;
-use Cake\Core\Configure;
 use Cake\Event\Event;
 use Cake\Network\Exception\ConflictException;
 use Cake\Network\Exception\ForbiddenException;
+use Cake\Network\Exception\HttpException;
 use Cake\Routing\Router;
 use Cake\Utility\Hash;
 
@@ -79,20 +79,22 @@ class JsonApiComponent extends Component
      */
     public function parseInput($json)
     {
-        try {
-            $json = json_decode($json, true);
-            if (json_last_error() || !is_array($json) || !isset($json['data'])) {
-                throw new \InvalidArgumentException('Invalid JSON');
-            }
-
-            return JsonApi::parseData((array)$json['data']);
-        } catch (\InvalidArgumentException $e) {
-            if (Configure::read('debug') && !(empty($json))) {
-                throw $e;
-            }
-
+        if (empty($json)) {
             return [];
         }
+
+        $json = json_decode($json, true);
+        if (json_last_error() || !is_array($json) || !isset($json['data']) || !is_array($json['data'])) {
+            throw new HttpException(__d('bedita', 'Invalid JSON'), 400);
+        }
+
+        try {
+            $data = JsonApi::parseData($json['data']);
+        } catch (\InvalidArgumentException $e) {
+            throw new HttpException($e->getMessage(), 400, $e);
+        }
+
+        return $data;
     }
 
     /**
