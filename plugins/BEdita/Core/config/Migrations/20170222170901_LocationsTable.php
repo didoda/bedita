@@ -21,8 +21,15 @@ class LocationsTable extends AbstractMigration
 
     public function up()
     {
+        $options = [];
+        if ($this->getAdapter()->getAdapterType() === 'mysql') {
+            $collation = $this->fetchRow('SELECT DEFAULT_COLLATION_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = DATABASE();');
+            $options = [
+                'collation' => $collation['DEFAULT_COLLATION_NAME'],
+            ];
+        }
 
-        $this->table('locations')
+        $this->table('locations', $options)
             ->addColumn('id', 'integer', [
                 'default' => null,
                 'limit' => 10,
@@ -32,7 +39,7 @@ class LocationsTable extends AbstractMigration
             ->addPrimaryKey(['id'])
             ->addColumn('coords', 'string', [
                 'after' => 'id',
-                'comment' => 'geometry coordinates, like points or poligons',
+                'comment' => 'geometry coordinates, like points or polygons',
                 'default' => null,
                 'length' => null,
                 'null' => true,

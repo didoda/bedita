@@ -21,7 +21,15 @@ class Alpha extends AbstractMigration
         $columnTypes = $this->getAdapter()->getColumnTypes();
         $enum = in_array('enum', $columnTypes) ? 'enum' : 'string';
 
-        $this->table('annotations')
+        $options = [];
+        if ($this->getAdapter()->getAdapterType() === 'mysql') {
+            $collation = $this->fetchRow('SELECT DEFAULT_COLLATION_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = DATABASE();');
+            $options = [
+                'collation' => $collation['DEFAULT_COLLATION_NAME'],
+            ];
+        }
+
+        $this->table('annotations', $options)
             ->addColumn('id', 'integer', [
                 'autoIncrement' => true,
                 'default' => null,
@@ -86,7 +94,7 @@ class Alpha extends AbstractMigration
             )
             ->create();
 
-        $this->table('applications')
+        $this->table('applications', $options)
             ->addColumn('id', 'integer', [
                 'autoIncrement' => true,
                 'default' => null,
@@ -151,7 +159,7 @@ class Alpha extends AbstractMigration
             )
             ->create();
 
-        $this->table('auth_providers')
+        $this->table('auth_providers', $options)
             ->addColumn('id', 'integer', [
                 'autoIncrement' => true,
                 'default' => null,
@@ -189,7 +197,7 @@ class Alpha extends AbstractMigration
             )
             ->create();
 
-        $this->table('config')
+        $this->table('config', $options)
             ->addColumn('name', 'string', [
                 'comment' => 'configuration key',
                 'default' => null,
@@ -231,7 +239,7 @@ class Alpha extends AbstractMigration
             )
             ->create();
 
-        $this->table('endpoint_permissions')
+        $this->table('endpoint_permissions', $options)
             ->addColumn('id', 'integer', [
                 'autoIncrement' => true,
                 'default' => null,
@@ -305,7 +313,7 @@ class Alpha extends AbstractMigration
             )
             ->create();
 
-        $this->table('endpoints')
+        $this->table('endpoints', $options)
             ->addColumn('id', 'integer', [
                 'autoIncrement' => true,
                 'default' => null,
@@ -370,7 +378,7 @@ class Alpha extends AbstractMigration
             )
             ->create();
 
-        $this->table('external_auth')
+        $this->table('external_auth', $options)
             ->addColumn('id', 'integer', [
                 'autoIncrement' => true,
                 'default' => null,
@@ -433,7 +441,7 @@ class Alpha extends AbstractMigration
             )
             ->create();
 
-        $this->table('media')
+        $this->table('media', $options)
             ->addColumn('id', 'integer', [
                 'default' => null,
                 'limit' => 10,
@@ -520,7 +528,7 @@ class Alpha extends AbstractMigration
             )
             ->create();
 
-        $this->table('object_permissions')
+        $this->table('object_permissions', $options)
             ->addColumn('id', 'integer', [
                 'autoIncrement' => true,
                 'default' => null,
@@ -577,7 +585,7 @@ class Alpha extends AbstractMigration
             )
             ->create();
 
-        $this->table('object_properties')
+        $this->table('object_properties', $options)
             ->addColumn('id', 'integer', [
                 'autoIncrement' => true,
                 'default' => null,
@@ -624,7 +632,7 @@ class Alpha extends AbstractMigration
             )
             ->create();
 
-        $this->table('object_relations')
+        $this->table('object_relations', $options)
             ->addColumn('left_id', 'integer', [
                 'comment' => 'left part of the relation object id',
                 'default' => null,
@@ -693,7 +701,7 @@ class Alpha extends AbstractMigration
             )
             ->create();
 
-        $this->table('object_types')
+        $this->table('object_types', $options)
             ->addColumn('id', 'integer', [
                 'autoIncrement' => true,
                 'default' => null,
@@ -761,7 +769,7 @@ class Alpha extends AbstractMigration
             )
             ->create();
 
-        $this->table('objects')
+        $this->table('objects', $options)
             ->addColumn('id', 'integer', [
                 'autoIncrement' => true,
                 'default' => null,
@@ -902,7 +910,7 @@ class Alpha extends AbstractMigration
             )
             ->create();
 
-        $this->table('profiles')
+        $this->table('profiles', $options)
             ->addColumn('id', 'integer', [
                 'default' => null,
                 'limit' => 10,
@@ -1023,7 +1031,7 @@ class Alpha extends AbstractMigration
             )
             ->create();
 
-        $this->table('properties')
+        $this->table('properties', $options)
             ->addColumn('id', 'integer', [
                 'autoIncrement' => true,
                 'default' => null,
@@ -1100,7 +1108,7 @@ class Alpha extends AbstractMigration
             )
             ->create();
 
-        $this->table('property_types')
+        $this->table('property_types', $options)
             ->addColumn('id', 'integer', [
                 'autoIncrement' => true,
                 'default' => null,
@@ -1132,7 +1140,7 @@ class Alpha extends AbstractMigration
             )
             ->create();
 
-        $this->table('relation_types')
+        $this->table('relation_types', $options)
             ->addColumn('relation_id', 'integer', [
                 'comment' => 'link to relation definition',
                 'default' => null,
@@ -1173,7 +1181,7 @@ class Alpha extends AbstractMigration
             )
             ->create();
 
-        $this->table('relations')
+        $this->table('relations', $options)
             ->addColumn('id', 'integer', [
                 'autoIncrement' => true,
                 'default' => null,
@@ -1238,7 +1246,7 @@ class Alpha extends AbstractMigration
             )
             ->create();
 
-        $this->table('roles')
+        $this->table('roles', $options)
             ->addColumn('id', 'integer', [
                 'autoIncrement' => true,
                 'default' => null,
@@ -1288,7 +1296,7 @@ class Alpha extends AbstractMigration
             )
             ->create();
 
-        $this->table('roles_users')
+        $this->table('roles_users', $options)
             ->addColumn('id', 'integer', [
                 'autoIncrement' => true,
                 'default' => null,
@@ -1329,7 +1337,7 @@ class Alpha extends AbstractMigration
             )
             ->create();
 
-        $this->table('trees')
+        $this->table('trees', $options)
             ->addColumn('id', 'integer', [
                 'autoIncrement' => true,
                 'default' => null,
@@ -1447,7 +1455,7 @@ class Alpha extends AbstractMigration
             )
             ->create();
 
-        $this->table('users')
+        $this->table('users', $options)
             ->addColumn('id', 'integer', [
                 'default' => null,
                 'limit' => 10,

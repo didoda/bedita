@@ -8,8 +8,15 @@ class CreateDateRanges extends AbstractMigration
 
     public function up()
     {
+        $options = [];
+        if ($this->getAdapter()->getAdapterType() === 'mysql') {
+            $collation = $this->fetchRow('SELECT DEFAULT_COLLATION_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = DATABASE();');
+            $options = [
+                'collation' => $collation['DEFAULT_COLLATION_NAME'],
+            ];
+        }
 
-        $this->table('date_ranges')
+        $this->table('date_ranges', $options)
             ->addColumn('id', 'integer', [
                 'autoIncrement' => true,
                 'default' => null,
