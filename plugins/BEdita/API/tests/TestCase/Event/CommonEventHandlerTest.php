@@ -10,14 +10,19 @@
  *
  * See LICENSE.LGPL or <http://gnu.org/licenses/lgpl-3.0.html> for more details.
  */
-namespace BEdita\API\Test\Event;
+namespace BEdita\API\Test\TestCase\Event;
 
 use BEdita\API\Event\CommonEventHandler;
 use BEdita\Core\Utility\LoggedUser;
+use Cake\Controller\Controller;
+use Cake\Database\Driver\Mysql;
+use Cake\Datasource\ConnectionManager;
 use Cake\Error\Middleware\ErrorHandlerMiddleware;
 use Cake\Event\Event;
 use Cake\Event\EventManager;
 use Cake\Http\MiddlewareQueue;
+use Cake\Http\ServerRequest;
+use Cake\Network\Exception\BadRequestException;
 use Cake\Network\Exception\UnauthorizedException;
 use Cake\ORM\TableRegistry;
 use Cake\TestSuite\TestCase;
@@ -27,9 +32,33 @@ use Cake\TestSuite\TestCase;
  */
 class CommonEventHandlerTest extends TestCase
 {
+
+    /**
+     * Connection name to be used for encoding check tests.
+     */
+    const CONNECTION_NAME = 'encoding_test';
+
+    /**
+     * Database fixtures.
+     *
+     * @var string[]
+     */
     public $fixtures = [
         'plugin.BEdita/Core.fake_animals'
     ];
+
+    /**
+     * {@inheritdoc}
+     */
+    public function tearDown()
+    {
+        parent::tearDown();
+
+        if (in_array(static::CONNECTION_NAME, ConnectionManager::configured())) {
+            ConnectionManager::drop(static::CONNECTION_NAME);
+        }
+        ConnectionManager::alias('test', 'default');
+    }
 
     /**
      * Test implemented events
@@ -73,7 +102,7 @@ class CommonEventHandlerTest extends TestCase
     /**
      * Data Provider for testCheckAuthorized
      *
-     * @return void
+     * @return array
      */
     public function checkAuthorizedProvider()
     {
@@ -138,9 +167,13 @@ class CommonEventHandlerTest extends TestCase
     }
 
     /**
-     * test check authorized
+     * Test check authorized
      *
+     * @param \Exception|bool $expected Expected result.
+     * @param \Cake\Event\Event $event Event to be dispatched.
+     * @param bool $userLogged Is the user logged in?
      * @return void
+     *
      * @dataProvider checkAuthorizedProvider
      * @covers ::checkAuthorized()
      */
@@ -178,5 +211,92 @@ class CommonEventHandlerTest extends TestCase
         $event = new Event('Auth.afterIdentify', null, ['user' => ['id' => 1]]);
         EventManager::instance()->dispatch($event);
         static::assertEquals(['id' => 1], LoggedUser::getUser());
+    }
+
+    /**
+     * Data provider for `testCheckEncoding` test case.
+     *
+     * @return array
+     */
+    public function checkEncodingProvider()
+    {
+        /** @var \Cake\Database\Connection $connection */
+        $connection = ConnectionManager::get('test', false);
+        $isMysql = $connection->getDriver() instanceof Mysql;
+
+        return [
+            'empty' => [
+                true,
+                null,
+                null,
+            ],
+            'utf8? no problem!' => [
+                true,
+                [
+                    'field1' => 123,
+                    'field2' => 'ASCII string',
+                    'field3' => 'Questa è una stringa UTF-8 su 3 bytes!',
+                ],
+                'utf8',
+            ],
+            'utf8' => [
+                $isMysql ? new BadRequestException('4-byte encoded UTF-8 characters are not supported') : true,
+                [
+                    'field1' => 123,
+                    'field2' => 'ASCII string',
+                    'field3' => 'Questa è una stringa UTF-8 su 3 bytes!',
+                    'field4' => '🍀-bytes encoded UTF-8️⃣ string',
+                ],
+                'utf8',
+            ],
+            'utf8mb4' => [
+                true,
+                [
+                    'field1' => 123,
+                    'field2' => 'ASCII string',
+                    'field3' => 'Questa è una stringa UTF-8 su 3 bytes!',
+                    'field4' => '🍀-bytes encoded UTF-8️⃣ string',
+                ],
+                'utf8mb4',
+            ],
+        ];
+    }
+
+    /**
+     * Test encoding check.
+     *
+     * @param \Exception|true $expected Expected result.
+     * @param mixed $data Request data.
+     * @param string $encoding Database encoding.
+     * @return void
+     *
+     * @dataProvider checkEncodingProvider()
+     * @covers ::checkEncoding()
+     */
+    public function testCheckEncoding($expected, $data, $encoding)
+    {
+        if ($expected instanceof \Exception) {
+            static::expectException(get_class($expected));
+            static::expectExceptionMessage($expected->getMessage());
+            static::expectExceptionCode($expected->getCode());
+        }
+
+        // Set up fake connection.
+        ConnectionManager::setConfig(
+            static::CONNECTION_NAME,
+            compact('encoding') + ConnectionManager::getConfig('test')
+        );
+        ConnectionManager::alias(static::CONNECTION_NAME, 'default');
+
+        // Set up event.
+        $event = new Event(
+            'Controller.startup',
+            new Controller(new ServerRequest(['post' => $data]))
+        );
+
+        EventManager::instance()->on(new CommonEventHandler());
+        EventManager::instance()->dispatch($event);
+
+        static::assertTrue($expected);
     }
 }

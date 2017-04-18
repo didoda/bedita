@@ -15,10 +15,13 @@ namespace BEdita\API\Event;
 use BEdita\API\Middleware\CorsMiddleware;
 use BEdita\Core\Utility\LoggedUser;
 use Cake\Core\Configure;
+use Cake\Database\Driver\Mysql;
+use Cake\Datasource\ConnectionManager;
 use Cake\Error\Middleware\ErrorHandlerMiddleware;
 use Cake\Event\Event;
 use Cake\Event\EventListenerInterface;
 use Cake\Http\MiddlewareQueue;
+use Cake\Network\Exception\BadRequestException;
 use Cake\Network\Exception\UnauthorizedException;
 use Cake\ORM\Table;
 
@@ -48,6 +51,7 @@ class CommonEventHandler implements EventListenerInterface
             'Auth.afterIdentify' => 'afterIdentify',
             'Model.beforeSave' => 'checkAuthorized',
             'Model.beforeDelete' => 'checkAuthorized',
+            'Controller.startup' => ['callable' => 'checkEncoding', 'priority' => 99],
         ];
     }
 
@@ -113,5 +117,42 @@ class CommonEventHandler implements EventListenerInterface
     public function afterIdentify(Event $event, array $user)
     {
         LoggedUser::setUser($user);
+    }
+
+    /**
+     * Check encoding.
+     *
+     * Since MySQL encoding `utf8` does not fully support UTF-8 (4-byte encoded characters are left out)
+     * we need to iterate through data to manually search for 4-byte encoded characters and raise an
+     * exception.
+     *
+     * @see https://dev.mysql.com/doc/refman/5.7/en/charset-unicode-utf8.html
+     *
+     * @param \Cake\Event\Event $event Dispatched event.
+     * @return void
+     * @throws \Cake\Network\Exception\BadRequestException Throws an exception if database is MySQL, encoding is
+     *      `utf8`, and a 4-byte encoded character is found.
+     */
+    public function checkEncoding(Event $event)
+    {
+        /** @var \Cake\Controller\Controller $controller */
+        $controller = $event->getSubject();
+        $data = $controller->request->getData();
+        if (!is_array($data)) {
+            return;
+        }
+
+        /** @var \Cake\Database\Connection $connection */
+        $connection = ConnectionManager::get('default');
+        $config = $connection->config() + ['encoding' => 'utf8'];
+        if ($connection->getDriver() instanceof Mysql && $config['encoding'] === 'utf8') {
+            array_walk_recursive($data, function ($value) {
+                if (is_string($value) && max(array_map('ord', str_split($value))) >= 240) {
+                    throw new BadRequestException(
+                        __d('bedita', '4-byte encoded UTF-8 characters are not supported')
+                    );
+                }
+            });
+        }
     }
 }
