@@ -220,7 +220,7 @@ class CommonEventHandlerTest extends TestCase
      */
     public function checkEncodingProvider()
     {
-        /** @var \Cake\Database\Connection $connection */
+        /* @var \Cake\Database\Connection $connection */
         $connection = ConnectionManager::get('test', false);
         $isMysql = $connection->getDriver() instanceof Mysql;
 

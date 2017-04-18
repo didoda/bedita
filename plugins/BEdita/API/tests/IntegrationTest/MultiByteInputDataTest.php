@@ -75,7 +75,7 @@ class MultiByteInputDataTest extends IntegrationTestCase
      */
     public function checkEncodingProvider()
     {
-        /** @var \Cake\Database\Connection $connection */
+        /* @var \Cake\Database\Connection $connection */
         $connection = ConnectionManager::get('test', false);
         $isMysql = $connection->getDriver() instanceof Mysql;
 
@@ -118,7 +118,7 @@ class MultiByteInputDataTest extends IntegrationTestCase
      * @return void
      *
      * @dataProvider checkEncodingProvider()
-     * @covers ::checkEncoding()
+     * @coversNothing
      */
     public function testCheckEncoding($expected, $attributes, $encoding)
     {

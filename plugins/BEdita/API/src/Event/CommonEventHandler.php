@@ -135,14 +135,14 @@ class CommonEventHandler implements EventListenerInterface
      */
     public function checkEncoding(Event $event)
     {
-        /** @var \Cake\Controller\Controller $controller */
+        /* @var \Cake\Controller\Controller $controller */
         $controller = $event->getSubject();
         $data = $controller->request->getData();
         if (!is_array($data)) {
             return;
         }
 
-        /** @var \Cake\Database\Connection $connection */
+        /* @var \Cake\Database\Connection $connection */
         $connection = ConnectionManager::get('default');
         $config = $connection->config() + ['encoding' => 'utf8'];
         if ($connection->getDriver() instanceof Mysql && $config['encoding'] === 'utf8') {
