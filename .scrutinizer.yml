@@ -1,11 +1,5 @@
 checks:
   php: true
-#checks:
-#  php:
-#    custom_coding_standard:
-#      git_repository: 'https://github.com/cakephp/cakephp-codesniffer'
-#      ruleset_path: 'CakePHP/ruleset.xml'
-#
 filter:
   paths:
     - 'src/*'
