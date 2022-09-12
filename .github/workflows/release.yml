@@ -41,3 +41,5 @@ jobs:
           tags: ${{ needs.release_job.outputs.version }}
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
+
+#test
